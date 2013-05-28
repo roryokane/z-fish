@@ -128,9 +128,17 @@ function z -d "Jump to a recent directory."
             # no file yet
             [ -f "$datafile" ]; or return
 
-            set -l cd (while read line
-                [ -d (echo $line | awk -F"|" '{print $1}') ]; and echo $line
-            end < $datafile | awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -F"|" '
+            set -l cd (awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -v datafile="$datafile" -F"|" '
+            function notdir(path, tmp) {
+                n = gsub("/+", "/", path)
+                for( i = 0; i < n; i++ ) path = path "/.."
+                path = path datafile
+                if( ( getline tmp < path ) >= 0 ) {
+                    close(path)
+                    return 0
+                }
+                return 1
+            }
             function frecent(rank, time) {
                 dx = t-time
                 if( dx < 3600 ) return rank*4
@@ -163,6 +171,7 @@ function z -d "Jump to a recent directory."
             }
             BEGIN { split(q, a, " "); oldf = noldf = -9999999999 }
             {
+                if( notdir($1) ) {next}
                 if( typ == "rank" ) {
                     f = $2
                 } else if( typ == "recent" ) {
@@ -185,8 +194,7 @@ function z -d "Jump to a recent directory."
                 if( cx ) {
                     output(wcase, cx, common(wcase))
                 } else if( ncx ) output(nocase, ncx, common(nocase))
-            }
-           ')
+            }' $datafile)
 
             [ $status -gt 0 ]; and return
             [ "$cd" ]; and cd "$cd"
