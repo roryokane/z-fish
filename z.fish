@@ -9,11 +9,12 @@
 #   * PROFIT!!
 #
 # USE:
-#   * z foo     # goes to most frecent dir matching foo
-#   * z foo bar # goes to most frecent dir matching foo and bar
-#   * z -r foo  # goes to highest ranked dir matching foo
-#   * z -t foo  # goes to most recently accessed dir matching foo
-#   * z -l foo  # list all dirs matching foo (by frecency)
+#   * z foo     # cd to most frecent dir matching foo
+#   * z foo bar # cd to most frecent dir matching foo and bar
+#   * z -r foo  # cd to highest ranked dir matching foo
+#   * z -t foo  # cd to most recently accessed dir matching foo
+#   * z -l foo  # list matches instead of cd
+#   * z -c foo  # restrict matches to subdirs of $PWD
 
 function z -d "Jump to a recent directory."
     set -l datafile "$HOME/.z"
@@ -25,9 +26,9 @@ function z -d "Jump to a recent directory."
         # $HOME isn't worth matching
         [ "$argv" = "$HOME" ]; and return
 
-		set -l tempfile (mktemp $datafile.XXXXXX)
-		test -f $tempfile; or return
-		
+        set -l tempfile (mktemp $datafile.XXXXXX)
+        test -f $tempfile; or return
+
         # maintain the file
         awk -v path="$argv" -v now=(date +%s) -F"|" '
             BEGIN {
@@ -45,13 +46,16 @@ function z -d "Jump to a recent directory."
                 count += $2
             }
             END {
-                if( count > 1000 ) {
+                if( count > 6000 ) {
                     for( i in rank ) print i "|" 0.9*rank[i] "|" time[i] # aging
                 } else for( i in rank ) print i "|" rank[i] "|" time[i]
             }
         ' $datafile ^/dev/null > $tempfile
-
-        mv -f $tempfile $datafile
+        if [ $status -ne 0 -a -f $datafile ]
+            rm -f "$tempfile"
+        else
+            mv -f "$tempfile" "$datafile"
+        end
 
     # tab completion
     else
@@ -79,117 +83,123 @@ function z -d "Jump to a recent directory."
             set -l list 0
             set -l typ ''
             set -l fnd ''
-            
+
             while [ (count $argv) -gt 0 ]
                 switch "$argv[1]"
-                    case -- '-h'
-                        echo "z [-h][-l][-r][-t] args" >&2
-                        return
-                    case -- '-l'
-                        set list 1
-                    case -- '-r'
-                        set typ "rank"
-                    case -- '-t'
-                        set typ "recent"
                     case -- '--'
                         while [ "$argv[1]" ]
                             set -e argv[1]
                             set fnd "$fnd $argv[1]"
                         end
+                    case -- '-*'
+                        set -l opt (echo $argv[1] | cut -b2-)
+                        while [ "$opt" ]
+                            switch (echo $opt | cut -b1)
+                                case -- 'c'
+                                    set fnd "^$PWD $fnd"
+                                case -- 'h'
+                                    echo "z [-chlrt] args" >&2
+                                    return
+                                case -- 'l'
+                                    set list 1
+                                case -- 'r'
+                                    set typ "rank"
+                                case -- 't'
+                                    set typ "recent"
+                            end
+                            set -l opt (echo $opt | cut -b2-)
+                        end
                     case '*'
                         set fnd "$fnd $argv[1]"
                 end
-                set last $1
+                set last $argv[1]
                 set -e argv[1]
             end
 
-            [ "$fnd" ]; or set list 1
+            [ "$fnd" -a "$fnd" != "^$PWD " ]; or set list 1
 
             # if we hit enter on a completion just go there
-            [ -d "$last" ]; and cd "$last"; and return
+            switch "$last"
+                # completions will always start with /
+                case -- '/*'
+                    [ -z "$list" -a -d "$last" ]; and cd "$last"; and return
+            end
 
             # no file yet
             [ -f "$datafile" ]; or return
 
-			set -l tempfile (mktemp $datafile.XXXXXX)
-			test -f $tempfile; or return
-            set -l target (awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -v tmpfl="$tempfile" -F"|" '
-                function frecent(rank, time) {
-                    dx = t-time
-                    if( dx < 3600 ) return rank*4
-                    if( dx < 86400 ) return rank*2
-                    if( dx < 604800 ) return rank/2
-                    return rank/4
+            set -l cd (while read line
+                [ -d (echo $line | awk -F"|" '{print $1}') ]; and echo $line
+            end < $datafile | awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -F"|" '
+            function frecent(rank, time) {
+                dx = t-time
+                if( dx < 3600 ) return rank*4
+                if( dx < 86400 ) return rank*2
+                if( dx < 604800 ) return rank/2
+                return rank/4
+            }
+            function output(files, toopen, override) {
+                if( list ) {
+                    cmd = "sort -n >&2"
+                    for( i in files ) if( files[i] ) printf "%-10s %s\n", files[i], i | cmd
+                    if( override ) printf "%-10s %s\n", "common:", override > "/dev/stderr"
+                } else {
+                    if( override ) toopen = override
+                    print toopen
                 }
-                function output(files, toopen, override) {
-                    if( list ) {
-                        if( typ == "recent" ) {
-                            cmd = "sort -nr >&2"
-                        } else cmd = "sort -n >&2"
-                        for( i in files ) if( files[i] ) printf "%-10s %s\n", files[i], i | cmd
-                        if( override ) printf "%-10s %s\n", "common:", override > "/dev/stderr"
-                    } else {
-                        if( override ) toopen = override
-                        print toopen
-                    }
+            }
+            function common(matches) {
+                # shortest match
+                for( i in matches ) {
+                    if( matches[i] && (!short || length(i) < length(short)) ) short = i
                 }
-                function common(matches, fnd, nc) {
-                    for( i in matches ) {
-                        if( matches[i] && (!short || length(i) < length(short)) ) short = i
-                    }
-                    if( short == "/" ) return
-                    for( i in matches ) if( matches[i] && i !~ short ) x = 1
-                    if( x ) return
-                    if( nc ) {
-                        for( i in fnd ) if( tolower(short) !~ tolower(fnd[i]) ) x = 1
-                    } else for( i in fnd ) if( short !~ fnd[i] ) x = 1
-                    if( !x ) return short
-                }
-                BEGIN { split(q, a, " ") }
-                {
-                    if( system("test -d \"" $1 "\"") ) next
-                    print $0 >> tmpfl
-                    if( typ == "rank" ) {
-                        f = $2
-                    } else if( typ == "recent" ) {
-                        f = t-$3
-                    } else f = frecent($2, $3)
+                if( short == "/" ) return
+                # shortest match must be common to each match. escape special characters in
+                # a copy when testing, so we can return the original.
+                clean_short = short
+                gsub(/[\(\)\[\]\|]/, "\\\\&", clean_short)
+                for( i in matches ) if( matches[i] && i !~ clean_short ) return
+                return short
+            }
+            BEGIN { split(q, a, " "); oldf = noldf = -9999999999 }
+            {
+                if( typ == "rank" ) {
+                    f = $2
+                } else if( typ == "recent" ) {
+                    f = $3-t
+                } else f = frecent($2, $3)
                     wcase[$1] = nocase[$1] = f
-                    for( i in a ) {
-                        if( $1 !~ a[i] ) delete wcase[$1]
-                        if( tolower($1) !~ tolower(a[i]) ) delete nocase[$1]
-                    }
-                    if( wcase[$1] > oldf ) {
-                        cx = $1
-                        oldf = wcase[$1]
-                    } else if( nocase[$1] > noldf ) {
-                        ncx = $1
-                        noldf = nocase[$1]
-                    }
+                for( i in a ) {
+                    if( $1 !~ a[i] ) delete wcase[$1]
+                    if( tolower($1) !~ tolower(a[i]) ) delete nocase[$1]
                 }
-                END {
-                    if( cx ) {
-                        output(wcase, cx, common(wcase, a, 0))
-                    } else if( ncx ) output(nocase, ncx, common(nocase, a, 1))
+                if( wcase[$1] && wcase[$1] > oldf ) {
+                    cx = $1
+                    oldf = wcase[$1]
+                } else if( nocase[$1] && nocase[$1] > noldf ) {
+                    ncx = $1
+                    noldf = nocase[$1]
                 }
-            ' "$datafile")
+            }
+            END {
+                if( cx ) {
+                    output(wcase, cx, common(wcase))
+                } else if( ncx ) output(nocase, ncx, common(nocase))
+            }
+           ')
 
-            if [ $status -gt 0 ]
-                rm -f "$tempfile"
-            else
-                mv -f "$tempfile" "$datafile"
-                [ "$target" ]; and cd "$target"
-            end
+            [ $status -gt 0 ]; and return
+            [ "$cd" ]; and cd "$cd"
         end
     end
-end	
+end
 
 function __z_init -d 'Set up automatic population of the directory list for z'
-	functions fish_prompt | grep -q 'z --add'
-	if [ $status -gt 0 ]
-		functions fish_prompt | sed -e '$ i\\
-		z --add "$PWD"' | .
-	end
+    functions fish_prompt | grep -q 'z --add'
+    if [ $status -gt 0 ]
+        functions fish_prompt | sed -e '$ i\\
+        z --add "$PWD"' | .
+    end
 end
 
 __z_init
