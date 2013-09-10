@@ -15,8 +15,11 @@
 #   * z -t foo  # goes to most recently accessed dir matching foo
 #   * z -l foo  # list all dirs matching foo (by frecency)
 
+
 function z -d "Jump to a recent directory."
-    set -l datafile "$HOME/.z"
+    if not set -q z_datafile
+        set -g z_datafile "$HOME/.z"
+    end
 
     # add entries
     if [ "$argv[1]" = "--add" ]
@@ -25,7 +28,7 @@ function z -d "Jump to a recent directory."
         # $HOME isn't worth matching
         [ "$argv" = "$HOME" ]; and return
 
-		set -l tempfile (mktemp $datafile.XXXXXX)
+		set -l tempfile (mktemp $z_datafile.XXXXXX)
 		test -f $tempfile; or return
 		
         # maintain the file
@@ -49,9 +52,9 @@ function z -d "Jump to a recent directory."
                     for( i in rank ) print i "|" 0.9*rank[i] "|" time[i] # aging
                 } else for( i in rank ) print i "|" rank[i] "|" time[i]
             }
-        ' $datafile ^/dev/null > $tempfile
+        ' $z_datafile ^/dev/null > $tempfile
 
-        mv -f $tempfile $datafile
+        mv -f $tempfile $z_datafile
 
     # tab completion
     else
@@ -71,7 +74,7 @@ function z -d "Jump to a recent directory."
                         if( $1 ) print $1
                     }
                 }
-            ' "$datafile" 2>/dev/null
+            ' "$z_datafile" 2>/dev/null
 
         else
             # list/go
@@ -109,9 +112,9 @@ function z -d "Jump to a recent directory."
             [ -d "$last" ]; and cd "$last"; and return
 
             # no file yet
-            [ -f "$datafile" ]; or return
+            [ -f "$z_datafile" ]; or return
 
-			set -l tempfile (mktemp $datafile.XXXXXX)
+			set -l tempfile (mktemp $z_datafile.XXXXXX)
 			test -f $tempfile; or return
             set -l target (awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -v tmpfl="$tempfile" -F"|" '
                 function frecent(rank, time) {
@@ -172,12 +175,12 @@ function z -d "Jump to a recent directory."
                         output(wcase, cx, common(wcase, a, 0))
                     } else if( ncx ) output(nocase, ncx, common(nocase, a, 1))
                 }
-            ' "$datafile")
+            ' "$z_datafile")
 
             if [ $status -gt 0 ]
                 rm -f "$tempfile"
             else
-                mv -f "$tempfile" "$datafile"
+                mv -f "$tempfile" "$z_datafile"
                 [ "$target" ]; and cd "$target"
             end
         end
