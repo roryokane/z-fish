@@ -16,6 +16,8 @@
 #   * z -l foo  # list matches instead of cd
 #   * z -c foo  # restrict matches to subdirs of $PWD
 
+complete -x -c z -a '(z --complete (commandline -t))'
+
 function addzhist --on-variable PWD
   z --add "$PWD"
 end
