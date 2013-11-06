@@ -16,6 +16,10 @@
 #   * z -l foo  # list matches instead of cd
 #   * z -c foo  # restrict matches to subdirs of $PWD
 
+function addzhist --on-variable PWD
+  z --add "$PWD"
+end
+
 function z -d "Jump to a recent directory."
     set -l datafile "$HOME/.z"
 
@@ -201,13 +205,3 @@ function z -d "Jump to a recent directory."
         end
     end
 end
-
-function __z_init -d 'Set up automatic population of the directory list for z'
-    functions fish_prompt | grep -q 'z --add'
-    if [ $status -gt 0 ]
-        functions fish_prompt | sed -e '$ i\\
-        z --add "$PWD"' | .
-    end
-end
-
-__z_init
