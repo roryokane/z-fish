@@ -34,11 +34,11 @@ function z -d "Jump to a recent directory."
         # $HOME isn't worth matching
         [ "$argv" = "$HOME" ]; and return
 
-        set -l tempfile (mktemp $z_datafile.XXXXXX)
+        set -l tempfile (command mktemp $z_datafile.XXXXXX)
         test -f $tempfile; or return
 
         # maintain the file
-        awk -v path="$argv" -v now=(date +%s) -F"|" '
+        command awk -v path="$argv" -v now=(date +%s) -F"|" '
             BEGIN {
                 rank[path] = 1
                 time[path] = now
@@ -60,15 +60,15 @@ function z -d "Jump to a recent directory."
             }
         ' $z_datafile ^/dev/null > $tempfile
         if [ $status -ne 0 -a -f $z_datafile ]
-            rm -f "$tempfile"
+            command rm -f "$tempfile"
         else
-            mv -f "$tempfile" "$z_datafile"
+            command mv -f "$tempfile" "$z_datafile"
         end
 
     # tab completion
     else
         if [ "$argv[1]" = "--complete" ]
-            awk -v q="$argv[2]" -F"|" '
+            command awk -v q="$argv[2]" -F"|" '
                 BEGIN {
                     if( q == tolower(q) ) nocase = 1
                     split(q,fnd," ")
@@ -136,7 +136,7 @@ function z -d "Jump to a recent directory."
             # no file yet
             [ -f "$z_datafile" ]; or return
 
-            set -l cd (awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -v z_datafile="$z_datafile" -F"|" '
+            set -l cd (command awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -v z_datafile="$z_datafile" -F"|" '
             function notdir(path, tmp) {
                 n = gsub("/+", "/", path)
                 for( i = 0; i < n; i++ ) path = path "/.."
