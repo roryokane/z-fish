@@ -23,7 +23,9 @@ function addzhist --on-variable PWD
 end
 
 function z -d "Jump to a recent directory."
-    set -l datafile "$HOME/.z"
+    if not set -q z_datafile
+        set -g z_datafile "$HOME/.z"
+    end
 
     # add entries
     if [ "$argv[1]" = "--add" ]
@@ -32,7 +34,7 @@ function z -d "Jump to a recent directory."
         # $HOME isn't worth matching
         [ "$argv" = "$HOME" ]; and return
 
-        set -l tempfile (mktemp $datafile.XXXXXX)
+        set -l tempfile (mktemp $z_datafile.XXXXXX)
         test -f $tempfile; or return
 
         # maintain the file
@@ -56,11 +58,11 @@ function z -d "Jump to a recent directory."
                     for( i in rank ) print i "|" 0.9*rank[i] "|" time[i] # aging
                 } else for( i in rank ) print i "|" rank[i] "|" time[i]
             }
-        ' $datafile ^/dev/null > $tempfile
-        if [ $status -ne 0 -a -f $datafile ]
+        ' $z_datafile ^/dev/null > $tempfile
+        if [ $status -ne 0 -a -f $z_datafile ]
             rm -f "$tempfile"
         else
-            mv -f "$tempfile" "$datafile"
+            mv -f "$tempfile" "$z_datafile"
         end
 
     # tab completion
@@ -81,7 +83,7 @@ function z -d "Jump to a recent directory."
                         if( $1 ) print $1
                     }
                 }
-            ' "$datafile" 2>/dev/null
+            ' "$z_datafile" 2>/dev/null
 
         else
             # list/go
@@ -132,13 +134,13 @@ function z -d "Jump to a recent directory."
             end
 
             # no file yet
-            [ -f "$datafile" ]; or return
+            [ -f "$z_datafile" ]; or return
 
-            set -l cd (awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -v datafile="$datafile" -F"|" '
+            set -l cd (awk -v t=(date +%s) -v list="$list" -v typ="$typ" -v q="$fnd" -v z_datafile="$z_datafile" -F"|" '
             function notdir(path, tmp) {
                 n = gsub("/+", "/", path)
                 for( i = 0; i < n; i++ ) path = path "/.."
-                path = path datafile
+                path = path z_datafile
                 if( ( getline tmp < path ) >= 0 ) {
                     close(path)
                     return 0
@@ -200,7 +202,7 @@ function z -d "Jump to a recent directory."
                 if( cx ) {
                     output(wcase, cx, common(wcase))
                 } else if( ncx ) output(nocase, ncx, common(nocase))
-            }' $datafile)
+            }' $z_datafile)
 
             [ $status -gt 0 ]; and return
             [ "$cd" ]; and cd "$cd"
