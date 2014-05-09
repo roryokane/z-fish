@@ -3,8 +3,6 @@
 # INSTALL:
 #   * put something like this in your config.fish:
 #     . /path/to/z.fish
-#   * put something like this in your fish_prompt function:
-#       z --add "$PWD"
 #   * cd around for a while to build up the db
 #   * PROFIT!!
 #
