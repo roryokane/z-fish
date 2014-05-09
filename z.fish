@@ -2,7 +2,7 @@
 #
 # INSTALL:
 #   * put something like this in your config.fish:
-#     . /path/to/z.fish
+#     source /path/to/z.fish
 #   * cd around for a while to build up the db
 #   * PROFIT!!
 #
